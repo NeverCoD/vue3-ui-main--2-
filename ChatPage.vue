@@ -3,41 +3,45 @@
     <div class="main">
       <div class="chatLog">
         <div v-for="(item, index) in reversedLog" :key="index">
-          <q-chat-message 
-            :bg-color ="item.role === 'user' ? 'grey' : 'primary'"
-            :text-color ="item.role === 'user' ? 'black' : 'white'"
-            :avatar="'../assets/pLogo.png'"
+          <q-chat-message
+            :bg-color="item.role === 'user' ? 'grey-3' : 'primary'"
+            :text-color="item.role === 'user' ? 'black' : 'white'"
+            :avatar="
+              item.role === 'user'
+                ? 'src/assets/customerIcon.png'
+                : 'src/assets/pLogo.png'
+            "
             :name="item.role === 'user' ? 'You' : 'Parknshop Bot'"
             :text="[item.content]"
             :sent="item.role === 'user'"
-            
           />
-          <q-spinner-dots size="2rem" />
+          <div v-if="isLoading && index === 0 && item.role === 'user'">
+            <q-spinner-dots color="primary" size="5vh" class="spinner-dot" />
+          </div>
         </div>
       </div>
       <div class="form">
         <div class="input-container">
           <q-input
             v-model="input"
-            label="Type something.."
+            label="Ask something.."
             outlined
-            style="width: 80%;"
+            style="width: 80%"
+            :disable="isLoading || !isBotMessageVisible"
             @keyup.enter="submitForm"
           ></q-input>
           <div class="button-container">
             <q-btn
-              v-if="!isLoading"
-              label="Submit"
-              type="submit"
+              v-if="!isLoading && isBotMessageVisible"
+              icon="send"
               color="primary"
               @click="generateResponse"
             ></q-btn>
             <q-btn
-              v-else
-              label="Loading..."
-              type="submit"
-              color="primary"
-              disable
+              v-else-if="isLoading && !isBotMessageVisible"
+              icon="stop_circle"
+              color="red"
+              @click="stopLoading"
             ></q-btn>
           </div>
         </div>
@@ -47,19 +51,20 @@
 </template>
 
 <script>
-import { defineComponent } from 'vue';
-import { Configuration, OpenAIApi } from 'openai';
+import { defineComponent } from "vue";
+import { Configuration, OpenAIApi } from "openai";
 
 export default defineComponent({
-  name: 'ChatPage',
+  name: "ChatPage",
   data() {
     return {
-      OPENAI_API_KEY: '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',
-      input: '',
-      response: '',
+      OPENAI_API_KEY: "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",
+      input: "",
+      response: "",
       log: [],
       messages: [],
       isLoading: false,
+      isBotMessageVisible: true,
     };
   },
   computed: {
@@ -69,52 +74,57 @@ export default defineComponent({
   },
   methods: {
     async completionCall(input) {
-      this.messages.push({ role: 'user', content: input });
-
+      this.messages.push({ role: "user", content: input });
       const configuration = new Configuration({
-        apiKey: process.env.OPENAI_API_KEY || this.OPENAI_API_KEY, // Use environment variable or secret management solution
+        apiKey: process.env.OPENAI_API_KEY || this.OPENAI_API_KEY,
       });
-
       const openai = new OpenAIApi(configuration);
 
       this.isLoading = true;
+      this.isBotMessageVisible = false;
 
-      const completion = await openai.createChatCompletion({
-        model: 'gpt-3.5-turbo',
-        messages: this.messages,
-      });
+      try {
+        const completion = await openai.createChatCompletion({
+          model: "gpt-3.5-turbo-16k",
+          messages: this.messages,
+        });
 
-      this.isLoading = false;
+        // Check if loading was stopped while the API call was in progress
+        if (!this.isLoading) {
+          return;
+        }
 
-      this.response = completion.data.choices[0].message.content;
-      console.log(completion.data.choices[0].message.content);
+        this.response = completion.data.choices[0].message.content;
+        console.log(completion.data.choices[0].message.content);
+      } catch (error) {
+        // Handle error if necessary
+        console.error(error);
+      } finally {
+        this.isLoading = false;
+        this.isBotMessageVisible = true;
+      }
     },
     async generateResponse() {
-      const userMessage = {
-        role: 'user',
-        content: this.input,
-      };
-
+      const userMessage = { role: "user", content: this.input };
       this.log.push(userMessage);
-
       await this.completionCall(this.input).then(() => {
-        const botMessage = {
-          role: 'bot',
-          content: this.response,
-        };
-
+        const botMessage = { role: "bot", content: this.response };
         this.log.push(botMessage);
-
-        this.input = '';
-        this.response = '';
+        this.input = "";
+        this.response = "";
       });
     },
     submitForm() {
-      if (this.input.trim() !== '') {
+      if (this.input.trim() !== "") {
         this.isLoading = true;
+        this.isBotMessageVisible = false;
         this.generateResponse();
-        this.input = '';
+        this.input = "";
       }
+    },
+    stopLoading() {
+      this.isLoading = false;
+      this.isBotMessageVisible = true;
     },
   },
 });
@@ -150,5 +160,9 @@ export default defineComponent({
   flex-direction: column-reverse;
   max-height: 75vh; /* Adjust the maximum height as needed */
   overflow: auto;
+}
+
+.spinner-dot {
+  margin-left: 4px;
 }
 </style>
